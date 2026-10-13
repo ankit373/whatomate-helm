@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - name: Lint
         run: helm lint charts/whatomate -f ci/values-kind.yaml
       - name: Production without allowed origins must fail to render
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - uses: helm/kind-action@v1
       - run: ./ci/smoke.sh
 
@@ -47,7 +47,7 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
       - name: Release if this chart version is new
         env:
           GH_TOKEN: ${{ github.token }}
