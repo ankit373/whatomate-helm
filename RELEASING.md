@@ -22,9 +22,9 @@ version.
 
 ## First publish
 
-GHCR creates a new package as private. After the first release, make
-`ghcr.io/ankit373/charts/whatomate` public in the package settings, or `helm install` from the README
-will be denied.
+After the first release, check that an anonymous pull works, for example
+`helm show chart oci://ghcr.io/ankit373/charts/whatomate --version <version>` from a machine without
+GHCR credentials. If it is denied, make the package public in the GHCR package settings.
 
 ## If a release is wrong
 
