@@ -1,0 +1,56 @@
+name: Track Whatomate releases
+
+# Opens a pull request when Whatomate publishes a release the chart does not target yet.
+# It never merges. A person reads the upstream release notes for config changes first,
+# because Whatomate is pre-1.0 and has renamed settings between releases.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Open a bump PR for a new upstream release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Every Whatomate release is marked pre-release, so /releases/latest would skip them all.
+          tag=$(gh api 'repos/shridarpatil/whatomate/releases?per_page=1' --jq '.[0].tag_name')
+          [ -n "$tag" ] || { echo "no upstream release found" >&2; exit 1; }
+          new=${tag#v}
+          current=$(awk -F'"' '/^appVersion:/ {print $2}' charts/whatomate/Chart.yaml)
+          if [ "$new" = "$current" ]; then echo "already on $current"; exit 0; fi
+
+          branch="bump/whatomate-$new"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "$branch already exists"; exit 0
+          fi
+          # The image tag is the release tag without the leading v.
+          docker manifest inspect "shridh0r/whatomate:$new" >/dev/null || { echo "image shridh0r/whatomate:$new is not published yet" >&2; exit 0; }
+
+          chart=$(awk '/^version:/ {print $2}' charts/whatomate/Chart.yaml)
+          next=$(echo "$chart" | awk -F. '{printf "%d.%d.0", $1, $2+1}')
+          sed -i "s/^appVersion: .*/appVersion: \"$new\"/; s/^version: .*/version: $next/" charts/whatomate/Chart.yaml
+          sed -i "/^| Chart | Whatomate |/,/^$/ s/^\(|[-| ]*|\)$/\1\n| $next | $new | Not yet verified |/" README.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "Target Whatomate $new" --signoff
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --title "Target Whatomate $new" --body "Upstream published [$tag](https://github.com/shridarpatil/whatomate/releases/tag/$tag).
+
+          Before merging:
+          - [ ] Read the release notes for renamed or removed settings and update \`values.yaml\` and the chart README if any
+          - [ ] The smoke test passes against \`shridh0r/whatomate:$new\`
+          - [ ] Replace \`Not yet verified\` in the compatibility table with what was checked"
+          # A PR opened with the workflow token does not trigger pull_request workflows, so run CI on the branch.
+          gh workflow run ci.yml --ref "$branch"

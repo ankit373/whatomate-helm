@@ -1,8 +1,12 @@
-# Whatomate Helm chart
+# whatomate-helm
 
-Deploys [Whatomate](https://github.com/shridarpatil/whatomate) on Kubernetes. PostgreSQL and Redis
-are not bundled: point the chart at existing instances (managed services, or charts such as
-`bitnami/postgresql` and `bitnami/redis`).
+A community Helm chart for [Whatomate](https://github.com/shridarpatil/whatomate), the self-hosted
+WhatsApp Business platform.
+
+This chart is **unofficial**. It is not maintained by the Whatomate project, which keeps deployment
+tooling out of its own repository. Problems with the application belong in
+[shridarpatil/whatomate](https://github.com/shridarpatil/whatomate/issues). Problems with this chart
+belong here.
 
 ## Install
 
@@ -13,57 +17,51 @@ kubectl -n whatomate create secret generic whatomate \
   --from-literal=jwt-secret="$(openssl rand -hex 32)" \
   --from-literal=encryption-key="$(openssl rand -hex 32)"
 
-helm install whatomate ./charts/whatomate -n whatomate -f my-values.yaml
+helm install whatomate oci://ghcr.io/ankit373/charts/whatomate \
+  --version 0.1.0 -n whatomate -f my-values.yaml
 ```
 
-`my-values.yaml`:
+PostgreSQL and Redis are not bundled. See [the chart README](charts/whatomate/README.md) for the
+values, the secret mapping, and a complete `my-values.yaml`.
 
-```yaml
-config:
-  database:
-    host: postgres.whatomate.svc
-  redis:
-    host: redis-master.whatomate.svc
-secrets:
-  existingSecret: whatomate
-  keys:
-    database.password: db-password
-    jwt.secret: jwt-secret
-    app.encryption_key: encryption-key
-ingress:
-  enabled: true
-  className: nginx
-  hosts:
-    - host: whatomate.example.com
-```
+## Which chart version runs which Whatomate version
 
-## Configuration
+Each chart version targets exactly one Whatomate release, set as `appVersion`, and the image tag
+defaults to it. The chart never defaults to `latest`.
 
-`config` is a nested map using the same sections and keys as `config.example.toml`. Each entry is
-rendered as a `WHATOMATE_<SECTION>__<KEY>` environment variable (for example `rate_limit.enabled`
-becomes `WHATOMATE_RATE_LIMIT__ENABLED`), so key names always match what the app expects. Empty
-values are skipped so they never override `configToml`.
-
-`config.server.allowed_origins` is required when `config.app.environment` is `production`. If it is
-empty, the chart derives it from `ingress.hosts`, and `helm install` fails with a clear message when it
-cannot.
-
-Secret settings use the same `section.key` paths:
-
-| Value | Purpose |
-| --- | --- |
-| `secrets.existingSecret` + `secrets.keys` | Map config paths to keys in a Secret you manage |
-| `secrets.values` | Let the chart create the Secret (quick starts only) |
-| `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` | Wire in external secret stores, CSI drivers or anything else |
-
-Other values:
-
-| Value | Default | Notes |
+| Chart | Whatomate | Checked |
 | --- | --- | --- |
-| `image.tag` | chart `appVersion` | Pin a version; avoid `latest` |
-| `migrate` | `true` | Runs migrations on start. Back up the database before upgrading |
-| `persistence.size` | `10Gi` | Uploaded media. Watch usage, the app fails to store media when it is full |
-| `persistence.keep` | `true` | Keeps the volume on `helm uninstall` |
-| `strategy` | `{}` (RollingUpdate) | Use `type: Recreate` if the pod can move to another node with a ReadWriteOnce volume |
+| 0.1.0 | 0.1.1-beta-0.17 | On kind with PostgreSQL 17 and Redis 7: install, migrations and `/health` on every CI run; uninstall keeping the volume and reinstall by hand |
 
-The deployment runs a single replica because uploads live on a ReadWriteOnce volume.
+Whatomate is pre-1.0 and every release so far is marked pre-release. It has renamed settings between
+releases: after the switch to the double-underscore separator in
+[#478](https://github.com/shridarpatil/whatomate/pull/478), a deployment on `:latest` restarted onto
+the new image and ignored every environment variable. That is why the chart pins the application
+version and why the table above exists. Treat an `appVersion` bump as something to read the upstream
+release notes for.
+
+## How releases work
+
+- **Chart versions** follow SemVer. A patch is a chart fix, a minor is a new Whatomate version or new
+  values, and a major is a change that needs edits to existing values files.
+- **Tracking Whatomate.** A daily job looks for a new Whatomate release. When there is one, it opens a
+  pull request that bumps `appVersion` and the chart version and runs CI against the new image.
+  Nothing is merged or published until a person has read the release notes and filled in the table
+  above.
+- **Publishing.** Every merge to `main` that carries a chart version with no release yet is packaged,
+  pushed to `oci://ghcr.io/ankit373/charts/whatomate`, and attached to a GitHub release.
+- **CI** lints the chart, checks that a production install without allowed origins fails to render, and
+  installs the chart on a kind cluster against throwaway PostgreSQL and Redis. A pod that ignores its
+  environment variables never becomes ready, so a renamed setting fails there.
+
+The maintainer steps are in [RELEASING.md](RELEASING.md).
+
+## Support
+
+Only the Whatomate release in the latest chart version is tested. To stay on an older Whatomate, use
+the older chart version that targets it.
+
+## License
+
+The chart is licensed under [Apache-2.0](LICENSE). Whatomate itself is licensed separately, under
+AGPL-3.0, and is not distributed here. The chart only deploys the published image.

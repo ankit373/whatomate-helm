@@ -1,0 +1,13 @@
+# Throwaway values for the smoke test. Nothing here is a real secret.
+config:
+  server:
+    allowed_origins: http://localhost:8080
+  database:
+    host: postgres
+  redis:
+    host: redis
+secrets:
+  values:
+    database.password: ci-password
+    jwt.secret: "ci-jwt-secret-0000000000000000000000000000001"
+    app.encryption_key: "ci-encryption-key-00000000000000000000002"

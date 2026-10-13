@@ -1,0 +1,16 @@
+apiVersion: v2
+name: whatomate
+description: Community Helm chart for Whatomate, a self-hosted WhatsApp Business platform
+type: application
+version: 0.1.0
+appVersion: "0.1.1-beta-0.17"
+home: https://github.com/ankit373/whatomate-helm
+sources:
+  - https://github.com/ankit373/whatomate-helm
+  - https://github.com/shridarpatil/whatomate
+maintainers:
+  - name: Ankit Jha
+    url: https://github.com/ankit373
+keywords:
+  - whatsapp
+  - whatsapp-business

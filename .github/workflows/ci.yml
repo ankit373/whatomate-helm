@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint
+        run: helm lint charts/whatomate -f ci/values-kind.yaml
+      - name: Production without allowed origins must fail to render
+        run: |
+          if helm template t charts/whatomate -f ci/values-kind.yaml --set config.server.allowed_origins= >/dev/null 2>&1; then
+            echo "expected a render failure" >&2; exit 1
+          fi
+      - name: Env names follow the WHATOMATE_<SECTION>__<KEY> mapping
+        run: helm template t charts/whatomate -f ci/values-kind.yaml | grep -q 'WHATOMATE_DATABASE__HOST'
+      - name: Compatibility table lists this chart version
+        run: |
+          version=$(awk '/^version:/ {print $2}' charts/whatomate/Chart.yaml)
+          grep -q "^| $version |" README.md || { echo "add chart $version to the compatibility table in README.md" >&2; exit 1; }
+
+  smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+      - run: ./ci/smoke.sh
+
+  release:
+    # Publishes only a green main, and only when Chart.yaml carries a version with no release yet.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Release if this chart version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(awk '/^version:/ {print $2}' charts/whatomate/Chart.yaml)
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "v$version is already released"; exit 0
+          fi
+          helm package charts/whatomate --destination dist
+          echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push "dist/whatomate-$version.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
+          gh release create "v$version" "dist/whatomate-$version.tgz" --title "whatomate $version" --generate-notes
